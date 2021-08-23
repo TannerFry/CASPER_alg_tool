@@ -1,4 +1,5 @@
 from Bio.Seq import Seq
+import math
 
 class file_operations():
     def __init__(self):
@@ -45,11 +46,25 @@ class file_operations():
                             HSU_matrix_data.append(line)
                     break
 
-        return HSU_matrix_data
+        HSU_dict = {}
+        HSU_dict["GT"] = HSU_matrix_data[0]
+        HSU_dict["AC"] = HSU_matrix_data[1]
+        HSU_dict["GG"] = HSU_matrix_data[2]
+        HSU_dict["TG"] = HSU_matrix_data[3]
+        HSU_dict["TT"] = HSU_matrix_data[4]
+        HSU_dict["CA"] = HSU_matrix_data[5]
+        HSU_dict["CT"] = HSU_matrix_data[6]
+        HSU_dict["GA"] = HSU_matrix_data[7]
+        HSU_dict["AA"] = HSU_matrix_data[8]
+        HSU_dict["AG"] = HSU_matrix_data[9]
+        HSU_dict["TC"] = HSU_matrix_data[10]
+        HSU_dict["CC"] = HSU_matrix_data[11]
+
+        return HSU_dict
 
     def read_off_target_sequences(self, input_sequences_file_path):
         #create input sequences object
-        input_sequences = []
+        input_sequences = {}
 
         #create file object
         with open(input_sequences_file_path) as fin:
@@ -62,11 +77,10 @@ class file_operations():
                     for line in fin:
                         line = line.strip("\n")
                         if line.find(">") != -1:
-                            input_sequences.append(temp)
                             temp = []
                             break
                         else:
-                            temp.append(line)
+                            input_sequences[line] = temp
                 else:
                     temp.append(line)
 
@@ -80,7 +94,7 @@ class file_operations():
                 on_target_sequences.append(line)
         return on_target_sequences
 
-    def write_results(self):
+    def write_OT_results(self):
         pass
 
 
@@ -155,26 +169,97 @@ class on_target():
             p = 0
         return p
 
-    def score_sequences(self, sequences, CRISPRSCAN_data):
-        sc_scores = []
-        scores = []
-        for i, seq in enumerate(sequences):
-            sc_score = self.get_sc(seq, CRISPRSCAN_data)
-            sc_scores.append(sc_score)
-            sij_score = self.get_sij(seq)
-            sg_score = self.get_sg(seq)
-            p_score = self.get_p(sij_score, sg_score)
-            if p_score == 0:
-                scores.append(sc_score)
-            else:
-                scores.append(sc_score / p_score)
-        return scores
+    def score_sequence(self, seq, CRISPRSCAN_data):
+        sc_score = self.get_sc(seq, CRISPRSCAN_data)
+        sij_score = self.get_sij(seq)
+        sg_score = self.get_sg(seq)
+        p_score = self.get_p(sij_score, sg_score)
+        if p_score == 0:
+            score = sc_score
+        else:
+            score = sc_score / p_score
+        return score
 
 
 class off_target():
     def __init__(self):
         pass
 
+    def sh_score(self, mismatches, hsu_keys, hsu_matrix):
+        sh_score = 1.0
+        for i in range(len(mismatches)):
+
+            sh_score *= hsu_matrix[hsu_keys[i]][mismatches[i]]
+
+        return sh_score
+
+    def ss_score(self, mismatches):
+        ss_score = 1.0
+        for i in range(len(mismatches)):
+            if mismatches[i] < 6:
+                ss_score -= 0.1
+            elif mismatches[i] < 12:
+                ss_score -= 0.05
+            else:
+                ss_score -= 0.0125
+        return ss_score
+
+    def st_score(self, mismatches):
+        st_score = 3.5477
+        for i in range(len(mismatches)):
+            st_score -= (1.0 / (mismatches[i] + 1))
+        return st_score / 3.5477
+
+    def reverse_comp(self, c):
+        if c == "A":
+            return "T"
+        elif c == "T":
+            return "A"
+        elif c == "G":
+            return "C"
+        elif c == "C":
+            return "G"
+        else:
+            return "N"
+
+    def get_mismatches(self, ref_seq, query_seq, seq_length=20):
+        mismatch_locations = []
+        mismatch_keys = []
+
+        for i in range(seq_length-1, -1, -1):
+            if ref_seq[i] != query_seq[i]:
+                mismatch_locations.append(i)
+                mismatch_keys.append(query_seq[i] + self.reverse_comp(ref_seq[i]))
+
+        return mismatch_locations, mismatch_keys
+
+    def find_similars(self, query_seq, ref_seqs, seqs_on_target_score, HSU_matrix):
+        target_scores = []
+        sh_scores = []
+
+        for i in range(len(ref_seqs)):
+            r_ratio = seqs_on_target_score[ref_seqs[i]] / seqs_on_target_score[query_seq]
+            ref_seq = ref_seqs[i]
+            mismatch_locations, mismatch_keys = self.get_mismatches(ref_seq, query_seq)
+            if len(mismatch_locations) <= 5:
+                value = (math.sqrt(self.sh_score(mismatch_locations, mismatch_keys, HSU_matrix)) + self.st_score(mismatch_locations)) * (r_ratio ** 2) * (self.ss_score(mismatch_locations)** 6)
+                value /= 4
+                sh_scores.append(self.sh_score(mismatch_locations, mismatch_keys, HSU_matrix))
+                target_scores.append(value)
+
+        avg_score = sum(target_scores)
+        if len(target_scores) != 0:
+            avg_score /= len(target_scores)
+
+        return avg_score
+
+    def score_sequences(self, sequences, sequence_scores, HSU_matrix):
+        off_target_scores = []
+
+        for query_seq in sequences.keys():
+            off_target_scores.append(self.find_similars(query_seq, sequences[query_seq], sequence_scores, HSU_matrix))
+
+        return off_target_scores
 
 if __name__ == "__main__":
     #input/output file variables
@@ -190,10 +275,20 @@ if __name__ == "__main__":
 
     #parse all input data: CRISPR scan, HSU matrix, and input sequences
     CRISPRSCAN_data = file_operations_object.read_CRISPRSCAN(CASPER_info_file_path)
-    HSU_matrix_data = file_operations_object.read_HSU_matrix(CASPER_info_file_path)
+    HSU_matrix = file_operations_object.read_HSU_matrix(CASPER_info_file_path)
     input_on_target_sequences = file_operations_object.read_on_target_sequences(input_on_target_sequences_file_path)
+    input_off_target_sequences = file_operations_object.read_off_target_sequences(input_off_target_sequences_file_path)
 
-    #test on-scoring algorithm with on-score sequences
-    on_target_scores = on_target_object.score_sequences(input_on_target_sequences, CRISPRSCAN_data)
+    #get on-target scores for off-target data
+    OT_on_scores = {}
+    for query_seq in input_off_target_sequences.keys():
+        OT_on_scores[query_seq] = on_target_object.score_sequence(query_seq, CRISPRSCAN_data)
+        for ref_seq in input_off_target_sequences[query_seq]:
+            OT_on_scores[ref_seq] = on_target_object.score_sequence(ref_seq, CRISPRSCAN_data)
 
-    print(on_target_scores)
+    #calcualte off-target scores
+    OT_scores = off_target_object.score_sequences(input_off_target_sequences, OT_on_scores, HSU_matrix)
+    print(OT_scores)
+
+    #write out off-target results
+    #file_operations_object.write_OT_results()
