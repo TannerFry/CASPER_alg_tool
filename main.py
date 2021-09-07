@@ -1,6 +1,7 @@
 from Bio.Seq import Seq
 import math
 
+
 class file_operations():
     def __init__(self):
         pass
@@ -64,7 +65,8 @@ class file_operations():
 
     def read_off_target_sequences(self, input_sequences_file_path):
         #create input sequences object
-        input_sequences = {}
+        query_seqs = []
+        ref_seqs = []
 
         #create file object
         with open(input_sequences_file_path) as fin:
@@ -80,11 +82,14 @@ class file_operations():
                             temp = []
                             break
                         else:
-                            input_sequences[line] = temp
+                            line = line.split(",")
+                            ref_seqs.append(temp)
+                            query_seqs.append(line)
                 else:
+                    line = line.split(",")
                     temp.append(line)
 
-        return input_sequences
+        return query_seqs, ref_seqs
 
     def read_on_target_sequences(self, input_on_target_sequences_file_path):
         on_target_sequences = []
@@ -94,8 +99,15 @@ class file_operations():
                 on_target_sequences.append(line)
         return on_target_sequences
 
-    def write_OT_results(self):
-        pass
+    def write_OT_results(self, query_seqs, ref_seqs, OT_scores, sh_scores):
+        with open("OT_results.txt", "w") as fout:
+            for i in range(len(query_seqs)):
+                query_seq = query_seqs[i][0]
+                fout.write(f"{OT_scores[i]}\n")
+                for j in range(len(ref_seqs[i])):
+                    ref_seq = ref_seqs[i][j][0]
+                    fout.write(f"{sh_scores[i][j]}\n")
+                fout.write("\n")
 
 
 class on_target():
@@ -188,14 +200,13 @@ class off_target():
     def sh_score(self, mismatches, hsu_keys, hsu_matrix):
         sh_score = 1.0
         for i in range(len(mismatches)):
-
-            sh_score *= hsu_matrix[hsu_keys[i]][mismatches[i]]
-
+            sh_score *= hsu_matrix[hsu_keys[i]][20-mismatches[i]]
         return sh_score
 
     def ss_score(self, mismatches):
         ss_score = 1.0
         for i in range(len(mismatches)):
+            #print(f"ss_score: {ss_score}")
             if mismatches[i] < 6:
                 ss_score -= 0.1
             elif mismatches[i] < 12:
@@ -207,7 +218,7 @@ class off_target():
     def st_score(self, mismatches):
         st_score = 3.5477
         for i in range(len(mismatches)):
-            st_score -= (1.0 / (mismatches[i] + 1))
+            st_score -= (1.0 / (mismatches[i]))
         return st_score / 3.5477
 
     def reverse_comp(self, c):
@@ -228,7 +239,7 @@ class off_target():
 
         for i in range(seq_length-1, -1, -1):
             if ref_seq[i] != query_seq[i]:
-                mismatch_locations.append(i)
+                mismatch_locations.append(20-i)
                 mismatch_keys.append(query_seq[i] + self.reverse_comp(ref_seq[i]))
 
         return mismatch_locations, mismatch_keys
@@ -238,28 +249,43 @@ class off_target():
         sh_scores = []
 
         for i in range(len(ref_seqs)):
-            r_ratio = seqs_on_target_score[ref_seqs[i]] / seqs_on_target_score[query_seq]
-            ref_seq = ref_seqs[i]
-            mismatch_locations, mismatch_keys = self.get_mismatches(ref_seq, query_seq)
+            #print(f"ref on-score: {seqs_on_target_score[ref_seqs[i][0]]}")
+            #print(f"query on-score: {seqs_on_target_score[query_seq[0]]}")
+            r_ratio = seqs_on_target_score[query_seq[0]]/ seqs_on_target_score[ref_seqs[i][0]]
+            # print(f"query {query_seq[0]}: {seqs_on_target_score[query_seq[0]]}")
+            # print(f"ref {ref_seqs[i][0]}: {seqs_on_target_score[ref_seqs[i][0]]}")
+            # print(f"r_ratio: {r_ratio}")
+            # print(f"r_ratio: {r_ratio}")
+
+            ref_seq = ref_seqs[i][0]
+            mismatch_locations, mismatch_keys = self.get_mismatches(ref_seq, query_seq[0])
             if len(mismatch_locations) <= 5:
                 value = (math.sqrt(self.sh_score(mismatch_locations, mismatch_keys, HSU_matrix)) + self.st_score(mismatch_locations)) * (r_ratio ** 2) * (self.ss_score(mismatch_locations)** 6)
                 value /= 4
                 sh_scores.append(self.sh_score(mismatch_locations, mismatch_keys, HSU_matrix))
+                #print(f"mismatch_locations: {mismatch_locations}")
+                #print(f"mismatch_keys: {mismatch_keys}")
+                #print(f"sh_score: {sh_scores[-1]}")
                 target_scores.append(value)
+                print(f"score: {value}")
 
         avg_score = sum(target_scores)
         if len(target_scores) != 0:
             avg_score /= len(target_scores)
 
-        return avg_score
+        return avg_score, sh_scores
 
-    def score_sequences(self, sequences, sequence_scores, HSU_matrix):
-        off_target_scores = []
+    def score_sequences(self, query_seqs, ref_seqs, sequence_scores, HSU_matrix):
+        all_OT_scores = []
+        all_sh_scores = []
 
-        for query_seq in sequences.keys():
-            off_target_scores.append(self.find_similars(query_seq, sequences[query_seq], sequence_scores, HSU_matrix))
+        for i in range(len(query_seqs)):
+            off_target_scores, sh_scores = self.find_similars(query_seqs[i], ref_seqs[i], sequence_scores, HSU_matrix)
+            all_OT_scores.append(off_target_scores)
+            all_sh_scores.append(sh_scores)
 
-        return off_target_scores
+        return all_OT_scores, all_sh_scores
+
 
 if __name__ == "__main__":
     #input/output file variables
@@ -277,18 +303,20 @@ if __name__ == "__main__":
     CRISPRSCAN_data = file_operations_object.read_CRISPRSCAN(CASPER_info_file_path)
     HSU_matrix = file_operations_object.read_HSU_matrix(CASPER_info_file_path)
     input_on_target_sequences = file_operations_object.read_on_target_sequences(input_on_target_sequences_file_path)
-    input_off_target_sequences = file_operations_object.read_off_target_sequences(input_off_target_sequences_file_path)
+    query_seqs, ref_seqs = file_operations_object.read_off_target_sequences(input_off_target_sequences_file_path)
 
-    #get on-target scores for off-target data
+    #get on-target scores for off-target data - score based on long sequence
     OT_on_scores = {}
-    for query_seq in input_off_target_sequences.keys():
-        OT_on_scores[query_seq] = on_target_object.score_sequence(query_seq, CRISPRSCAN_data)
-        for ref_seq in input_off_target_sequences[query_seq]:
-            OT_on_scores[ref_seq] = on_target_object.score_sequence(ref_seq, CRISPRSCAN_data)
+
+    for seq in query_seqs:
+        OT_on_scores[seq[0]] = on_target_object.score_sequence(seq[1], CRISPRSCAN_data)
+
+    for section in ref_seqs:
+        for seq in section:
+            OT_on_scores[seq[0]] = on_target_object.score_sequence(seq[1], CRISPRSCAN_data)
 
     #calcualte off-target scores
-    OT_scores = off_target_object.score_sequences(input_off_target_sequences, OT_on_scores, HSU_matrix)
-    print(OT_scores)
+    OT_scores, sh_scores = off_target_object.score_sequences(query_seqs, ref_seqs, OT_on_scores, HSU_matrix)
 
     #write out off-target results
-    #file_operations_object.write_OT_results()
+    file_operations_object.write_OT_results(query_seqs, ref_seqs, OT_scores, sh_scores)
