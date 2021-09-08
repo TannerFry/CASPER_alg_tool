@@ -181,11 +181,30 @@ class on_target():
             p = 0
         return p
 
-    def score_sequence(self, seq, CRISPRSCAN_data):
-        sc_score = self.get_sc(seq, CRISPRSCAN_data)
-        sij_score = self.get_sij(seq)
-        sg_score = self.get_sg(seq)
+    def ggg_penalty(self, seq):
+        ggg_count = 0
+        for i in range(0, len(seq)-2):
+            if seq[i:i+3] == "GGG":
+                ggg_count += 1
+
+        if ggg_count < 2:
+            return 1
+        elif ggg_count == 2:
+            return 0.85
+        elif ggg_count == 3:
+            return 0.7
+        else:
+            return 0.5
+
+    def score_sequence(self, gRNA, full_seq, CRISPRSCAN_data, endo):
+        sc_score = self.get_sc(full_seq, CRISPRSCAN_data)
+        sij_score = self.get_sij(full_seq)
+        sg_score = self.get_sg(full_seq)
         p_score = self.get_p(sij_score, sg_score)
+
+        if endo != "spCas9":
+            p_score += self.ggg_penalty(gRNA)
+
         if p_score == 0:
             score = sc_score
         else:
@@ -221,21 +240,6 @@ class off_target():
             st_score -= (1.0 / (mismatches[i]))
         return st_score / 3.5477
 
-    def ggg_penalty(self, seq):
-        ggg_count = 0
-        for i in range(0, len(seq)-2):
-            if seq[i:i+3] == "GGG":
-                ggg_count += 1
-
-        if ggg_count < 2:
-            return 1
-        elif ggg_count == 2:
-            return 0.85
-        elif ggg_count == 3:
-            return 0.7
-        else:
-            return 0.5
-
     def reverse_comp(self, c):
         if c == "A":
             return "T"
@@ -264,23 +268,13 @@ class off_target():
         sh_scores = []
 
         for i in range(len(ref_seqs)):
-            #print(f"ref on-score: {seqs_on_target_score[ref_seqs[i][0]]}")
-            #print(f"query on-score: {seqs_on_target_score[query_seq[0]]}")
             r_ratio = seqs_on_target_score[query_seq[0]]/ seqs_on_target_score[ref_seqs[i][0]]
-            # print(f"query {query_seq[0]}: {seqs_on_target_score[query_seq[0]]}")
-            # print(f"ref {ref_seqs[i][0]}: {seqs_on_target_score[ref_seqs[i][0]]}")
-            # print(f"r_ratio: {r_ratio}")
-            # print(f"r_ratio: {r_ratio}")
-
             ref_seq = ref_seqs[i][0]
             mismatch_locations, mismatch_keys = self.get_mismatches(ref_seq, query_seq[0])
             if len(mismatch_locations) <= 5:
                 value = (math.sqrt(self.sh_score(mismatch_locations, mismatch_keys, HSU_matrix)) + self.st_score(mismatch_locations)) * (r_ratio ** 2) * (self.ss_score(mismatch_locations)** 6)
                 value /= 4
                 sh_scores.append(self.sh_score(mismatch_locations, mismatch_keys, HSU_matrix))
-                #print(f"mismatch_locations: {mismatch_locations}")
-                #print(f"mismatch_keys: {mismatch_keys}")
-                #print(f"sh_score: {sh_scores[-1]}")
                 target_scores.append(value)
                 print(f"score: {value}")
 
@@ -324,11 +318,11 @@ if __name__ == "__main__":
     OT_on_scores = {}
 
     for seq in query_seqs:
-        OT_on_scores[seq[0]] = on_target_object.score_sequence(seq[1], CRISPRSCAN_data)
+        OT_on_scores[seq[0]] = on_target_object.score_sequence(seq[0], seq[1], CRISPRSCAN_data, "spCas9")
 
     for section in ref_seqs:
         for seq in section:
-            OT_on_scores[seq[0]] = on_target_object.score_sequence(seq[1], CRISPRSCAN_data)
+            OT_on_scores[seq[0]] = on_target_object.score_sequence(seq[0], seq[1], CRISPRSCAN_data, "spCas9")
 
     #calcualte off-target scores
     OT_scores, sh_scores = off_target_object.score_sequences(query_seqs, ref_seqs, OT_on_scores, HSU_matrix)
