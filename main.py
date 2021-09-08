@@ -221,6 +221,21 @@ class off_target():
             st_score -= (1.0 / (mismatches[i]))
         return st_score / 3.5477
 
+    def ggg_penalty(self, seq):
+        ggg_count = 0
+        for i in range(0, len(seq)-2):
+            if seq[i:i+3] == "GGG":
+                ggg_count += 1
+
+        if ggg_count < 2:
+            return 1
+        elif ggg_count == 2:
+            return 0.85
+        elif ggg_count == 3:
+            return 0.7
+        else:
+            return 0.5
+
     def reverse_comp(self, c):
         if c == "A":
             return "T"
@@ -317,6 +332,9 @@ if __name__ == "__main__":
 
     #calcualte off-target scores
     OT_scores, sh_scores = off_target_object.score_sequences(query_seqs, ref_seqs, OT_on_scores, HSU_matrix)
+
+    print(OT_scores)
+    print(sh_scores)
 
     #write out off-target results
     file_operations_object.write_OT_results(query_seqs, ref_seqs, OT_scores, sh_scores)
