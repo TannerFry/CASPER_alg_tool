@@ -136,10 +136,10 @@ class on_target():
                 if i in CRISPRSCAN_data.keys():
                     if (nt + "x") in CRISPRSCAN_data[i].keys():
                         score += CRISPRSCAN_data[i][nt + "x"]
-                        print(i,nt+"x",CRISPRSCAN_data[i][nt + "x"])
+                        #print(i,nt+"x",CRISPRSCAN_data[i][nt + "x"])
                     if dnt in CRISPRSCAN_data[i].keys():
                         score += CRISPRSCAN_data[i][dnt]
-                        print(i,dnt,CRISPRSCAN_data[i][dnt])
+                        #print(i,dnt,CRISPRSCAN_data[i][dnt])
         else:
             seq = seq[::-1] ### Reverse sequence so PAMs are in same location relative to CRISPRscan data
             for i, nt in enumerate(seq):
@@ -149,10 +149,10 @@ class on_target():
                 if i in CRISPRSCAN_data.keys():
                     if (nt + "x") in CRISPRSCAN_data[i].keys():
                         score += CRISPRSCAN_data[i][nt + "x"]
-                        print(i,nt+"x",CRISPRSCAN_data[i][nt + "x"])
+                        #print(i,nt+"x",CRISPRSCAN_data[i][nt + "x"])
                     if dnt in CRISPRSCAN_data[i].keys():
                         score += CRISPRSCAN_data[i][dnt]
-                        print(i,dnt,CRISPRSCAN_data[i][dnt])
+                        #print(i,dnt,CRISPRSCAN_data[i][dnt])
 
         # Return the CRISPRscan score
         score += 0.183930944
@@ -292,7 +292,8 @@ class off_target():
     def find_similars(self, query_seq, ref_seqs, seqs_on_target_score, HSU_matrix):
         target_scores = []
         sh_scores = []
-
+        print(query_seq)
+        print(ref_seqs)
         for i in range(len(ref_seqs)):
             #print(f"ref on-score: {seqs_on_target_score[ref_seqs[i][0]]}")
             #print(f"query on-score: {seqs_on_target_score[query_seq[0]]}")
@@ -303,6 +304,7 @@ class off_target():
             # print(f"r_ratio: {r_ratio}")
 
             ref_seq = ref_seqs[i][0]
+            print(ref_seq)
             mismatch_locations, mismatch_keys = self.get_mismatches(ref_seq, query_seq[0])
             if len(mismatch_locations) <= 5:
                 value = (math.sqrt(self.sh_score(mismatch_locations, mismatch_keys, HSU_matrix)) + self.st_score(mismatch_locations)) * (r_ratio ** 2) * (self.ss_score(mismatch_locations)** 6)
