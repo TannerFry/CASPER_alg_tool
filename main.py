@@ -122,26 +122,47 @@ class on_target():
         self.pam_scores.append([8, 8, 10, 0, 0, 0, 0])
         self.pam_scores.append([10, 10, 0, 0, 0, 0, 0])
 
-    def get_sc(self, seq, CRISPRSCAN_data):
+    def get_sc(self, seq, CRISPRSCAN_data, three_prime):
+        """ Calculates the CRISPRscan score for the on-target sequence. Seq should be 35nt in length.
+            CRISPRscan assumes index 1 is the position farthest from the PAM. """
         seq = seq.upper()
         score = 0
         """ Tally the CRISPRscan score for the sequence """
-        for i, nt in enumerate(seq):
-            if i == len(seq) - 1:
-                dnt = ""
-            dnt = seq[i:i + 2]
-            if i in CRISPRSCAN_data.keys():
-                if (nt + "x") in CRISPRSCAN_data[i].keys():
-                    score += CRISPRSCAN_data[i][nt + "x"]
-                if dnt in CRISPRSCAN_data[i].keys():
-                    score += CRISPRSCAN_data[i][dnt]
+        if three_prime:
+            for i, nt in enumerate(seq):
+                if i == len(seq) - 1:
+                    dnt = ""
+                dnt = seq[i:i + 2]
+                if i in CRISPRSCAN_data.keys():
+                    if (nt + "x") in CRISPRSCAN_data[i].keys():
+                        score += CRISPRSCAN_data[i][nt + "x"]
+                        print(i,nt+"x",CRISPRSCAN_data[i][nt + "x"])
+                    if dnt in CRISPRSCAN_data[i].keys():
+                        score += CRISPRSCAN_data[i][dnt]
+                        print(i,dnt,CRISPRSCAN_data[i][dnt])
+        else:
+            seq = seq[::-1] ### Reverse sequence so PAMs are in same location relative to CRISPRscan data
+            for i, nt in enumerate(seq):
+                if i == len(seq) - 1:
+                    dnt = ""
+                dnt = seq[i:i + 2]
+                if i in CRISPRSCAN_data.keys():
+                    if (nt + "x") in CRISPRSCAN_data[i].keys():
+                        score += CRISPRSCAN_data[i][nt + "x"]
+                        print(i,nt+"x",CRISPRSCAN_data[i][nt + "x"])
+                    if dnt in CRISPRSCAN_data[i].keys():
+                        score += CRISPRSCAN_data[i][dnt]
+                        print(i,dnt,CRISPRSCAN_data[i][dnt])
 
         # Return the CRISPRscan score
         score += 0.183930944
         return (score * 100)
 
-    def get_sij(self, seq):
-        seq = seq[6:len(seq) - 9]
+    def get_sij(self, seq,three_prime,gRNA_len,pam):
+        if three_prime:
+            seq = seq[6:(6+gRNA_len)] ###This works
+        else:
+            seq = seq[6+len(pam):6+len(pam)+gRNA_len] ###This works
         seq = Seq(seq.upper())
         rev_seq = seq.reverse_complement()
         pam_list = ["AGG", "TGG", "CGG", "GGG"]
@@ -160,8 +181,11 @@ class on_target():
 
         return pam_penalty
 
-    def get_sg(self, seq):
-        seq = seq[6:len(seq) - 9]
+    def get_sg(self, seq,three_prime,gRNA_len,pam):
+        if three_prime:
+            seq = seq[6:(6+gRNA_len)]
+        else:
+            seq = seq[6+len(pam):6+len(pam)+gRNA_len] ###This works
         score = 0
         for nt in seq:
             if nt == "G":
@@ -170,7 +194,7 @@ class on_target():
                 score += 0.5
             elif nt == "A":
                 score -= 0.1
-        return score / 20
+        return score / gRNA_len
 
     def get_p(self, sij_score, sg_score):
         if sij_score > 1:
@@ -196,10 +220,10 @@ class on_target():
         else:
             return 0.5
 
-    def score_sequence(self, gRNA, full_seq, CRISPRSCAN_data, endo):
-        sc_score = self.get_sc(full_seq, CRISPRSCAN_data)
-        sij_score = self.get_sij(full_seq)
-        sg_score = self.get_sg(full_seq)
+    def score_sequence(self, gRNA, full_seq, CRISPRSCAN_data, endo, three_prime,gRNA_len,pam):
+        sc_score = self.get_sc(full_seq, CRISPRSCAN_data,three_prime)
+        sij_score = self.get_sij(full_seq,three_prime,gRNA_len,pam)
+        sg_score = self.get_sg(full_seq,three_prime,gRNA_len,pam)
         p_score = self.get_p(sij_score, sg_score)
 
         if endo != "spCas9":
@@ -260,7 +284,7 @@ class off_target():
         for i in range(seq_length-1, -1, -1):
             if ref_seq[i] != query_seq[i]:
                 mismatch_locations.append(20-i)
-                #mismatch_keys.append(query_seq[i] + self.reverse_comp(ref_seq[i]))
+                # mismatch_keys.append(query_seq[i] + self.reverse_comp(ref_seq[i]))
                 mismatch_keys.append(ref_seq[i] + self.reverse_comp(query_seq[i]))
 
         return mismatch_locations, mismatch_keys
@@ -270,38 +294,30 @@ class off_target():
         sh_scores = []
 
         for i in range(len(ref_seqs)):
-<<<<<<< HEAD
             #print(f"ref on-score: {seqs_on_target_score[ref_seqs[i][0]]}")
             #print(f"query on-score: {seqs_on_target_score[query_seq[0]]}")
             # r_ratio = seqs_on_target_score[query_seq[0]]/ seqs_on_target_score[ref_seqs[i][0]]
             r_ratio = seqs_on_target_score[ref_seqs[i][0]]/seqs_on_target_score[query_seq[0]]
-            print(f"query {query_seq[0]}: {seqs_on_target_score[query_seq[0]]}")
-            print(f"ref {ref_seqs[i][0]}: {seqs_on_target_score[ref_seqs[i][0]]}")
+            # print(f"query {query_seq[0]}: {seqs_on_target_score[query_seq[0]]}")
+            # print(f"ref {ref_seqs[i][0]}: {seqs_on_target_score[ref_seqs[i][0]]}")
             # print(f"r_ratio: {r_ratio}")
 
-=======
-            r_ratio = seqs_on_target_score[query_seq[0]]/ seqs_on_target_score[ref_seqs[i][0]]
->>>>>>> a1057a6ed4631c0b03918ef11b742f9fdc6b0978
             ref_seq = ref_seqs[i][0]
             mismatch_locations, mismatch_keys = self.get_mismatches(ref_seq, query_seq[0])
             if len(mismatch_locations) <= 5:
                 value = (math.sqrt(self.sh_score(mismatch_locations, mismatch_keys, HSU_matrix)) + self.st_score(mismatch_locations)) * (r_ratio ** 2) * (self.ss_score(mismatch_locations)** 6)
                 # value = (math.sqrt(1.2984) + self.st_score(mismatch_locations)) * (r_ratio ** 2) * (self.ss_score(mismatch_locations)** 6)
                 value /= 4
-<<<<<<< HEAD
                 # sh_scores.append(self.sh_score(mismatch_locations, mismatch_keys, HSU_matrix))
-                print(f"r_ratio: {r_ratio}")
-                print(f"mismatch_locations: {mismatch_locations}")
-                print(f"mismatch_keys: {mismatch_keys}")
-                print(f"st_score: {self.st_score(mismatch_locations)}")
-                print(f"ss_score: {self.ss_score(mismatch_locations)}")
-                print(f"sh_score: {self.sh_score(mismatch_locations, mismatch_keys, HSU_matrix)}")
-=======
-                sh_scores.append(self.sh_score(mismatch_locations, mismatch_keys, HSU_matrix))
->>>>>>> a1057a6ed4631c0b03918ef11b742f9fdc6b0978
+                # print(f"r_ratio: {r_ratio}")
+                # print(f"mismatch_locations: {mismatch_locations}")
+                # print(f"mismatch_keys: {mismatch_keys}")
+                # print(f"st_score: {self.st_score(mismatch_locations)}")
+                # print(f"ss_score: {self.ss_score(mismatch_locations)}")
+                # print(f"sh_score: {self.sh_score(mismatch_locations, mismatch_keys, HSU_matrix)}")
                 target_scores.append(value)
                 sh_scores.append(self.sh_score(mismatch_locations,mismatch_keys,HSU_matrix))
-                print(f"score: {value}")
+                # print(f"score: {value}")
 
         avg_score = sum(target_scores)
         if len(target_scores) != 0:
@@ -346,21 +362,17 @@ if __name__ == "__main__":
     OT_on_scores = {}
 
     for seq in query_seqs:
-        OT_on_scores[seq[0]] = on_target_object.score_sequence(seq[0], seq[1], CRISPRSCAN_data, "spCas9")
+        OT_on_scores[seq[0]] = on_target_object.score_sequence(seq[0], seq[1], CRISPRSCAN_data, "spCas9",three_prime=True,gRNA_len=20,pam="NGG")
 
     for section in ref_seqs:
         for seq in section:
-            OT_on_scores[seq[0]] = on_target_object.score_sequence(seq[0], seq[1], CRISPRSCAN_data, "spCas9")
+            OT_on_scores[seq[0]] = on_target_object.score_sequence(seq[0], seq[1], CRISPRSCAN_data, "spCas9", three_prime=True,gRNA_len=20,pam="NGG")
 
     #calcualte off-target scores
     OT_scores, sh_scores, casper_scores = off_target_object.score_sequences(query_seqs, ref_seqs, OT_on_scores, HSU_matrix)
 
-    print(OT_scores)
-    print(sh_scores)
+    # print(OT_scores)
+    # print(sh_scores)
 
     #write out off-target results
-<<<<<<< HEAD
     file_operations_object.write_OT_results(query_seqs, ref_seqs, OT_scores, sh_scores,casper_scores)
-=======
-    file_operations_object.write_OT_results(query_seqs, ref_seqs, OT_scores, sh_scores)
->>>>>>> a1057a6ed4631c0b03918ef11b742f9fdc6b0978
