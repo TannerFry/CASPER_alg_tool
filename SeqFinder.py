@@ -1,5 +1,25 @@
 from Bio.Seq import Seq
 
+def reverse_complement(seq):
+    seq = seq[::-1]
+    reverse_comp_seq = ""
+    for char in seq:
+        if char == "A":
+            reverse_comp_seq += "T"
+        elif char == "T":
+            reverse_comp_seq += "A"
+        elif char ==  "C":
+            reverse_comp_seq += "G"
+        elif char == "G":
+            reverse_comp_seq += "C"    
+    return reverse_comp_seq
+
+def get_pams(pam):
+    if pam == "NGG":
+        return  ["AGG", "GGG", "TGG", "CGG"]
+    else:
+        return []
+
 class file_operations():
     def __init__(self) -> None:
         pass
@@ -177,32 +197,57 @@ class seq_finder():
 
     def find_pams(self, organism_data, pam):
         #hardcoding spCas9 pams for now
-        pams = ["AGG", "GGG", "TGG", "CGG"]
+        pams = get_pams(pam)
 
         #pam_locations will store the indexes of the first letter of the pams found for each chromosome section
         pam_locations = {}
+        pam_locations_reverse_comp = {}
+        
+        #formard passthrough
         for chromosome in organism_data.keys():
             pam_locations[chromosome]= []
             for i in range(0, len(organism_data[chromosome])-2):
                 if organism_data[chromosome][i:i+3] in pams:
                     pam_locations[chromosome].append(i)
         
-        return pam_locations
-    
-    def extract_sequences(self, organism_data, pam_locations, sequence_length, pam_length):
-        sequence_data = {}
+        #reverse complement passthrough
+        for chromosome in organism_data.keys():
+            pam_locations_reverse_comp[chromosome]= []
+            reverse_comp_data = reverse_complement(organism_data[chromosome])
 
+            for i in range(0, len(reverse_comp_data)-2):
+                if reverse_comp_data[i:i+3] in pams:
+                    pam_locations_reverse_comp[chromosome].append(i)
+
+        return pam_locations, pam_locations_reverse_comp
+    
+    def extract_sequences(self, organism_data, pam_locations, pam_locations_reverse_comp, sequence_length, pam_length):
+        sequence_data = {}
+        
         for chromosome in organism_data.keys():
             sequence_data[chromosome] = []
+            #process forward passthrough sequences
             for pam_location in pam_locations[chromosome]:
-                
                 #calculate leftover padding needed
                 leftover_padding = 35 - 6 - sequence_length - pam_length
                 full_seq = organism_data[chromosome][pam_location - sequence_length - leftover_padding: pam_location + pam_length + 6]
                 gRNA = organism_data[chromosome][pam_location - sequence_length: pam_location]
-                sequence_data[chromosome].append([pam_location, gRNA, full_seq])
-                break
-        
+                
+                #get rid of entries too close to edge
+                if len(gRNA) == 20 and len(full_seq) == 35:
+                    sequence_data[chromosome].append([pam_location - 1, gRNA, full_seq])
+                
+            #process reverse complement passthrough sequences
+            reverse_comp_data = reverse_complement(organism_data[chromosome])
+            for pam_location in pam_locations_reverse_comp[chromosome]:
+                leftover_padding = 35 - 6 - sequence_length - pam_length
+                full_seq = reverse_comp_data[pam_location - 6: pam_location + pam_length + sequence_length + leftover_padding]
+                gRNA = reverse_comp_data[pam_location + pam_length: pam_location + pam_length + sequence_length]
+
+                #get rid of entries too close to edge
+                if len(gRNA) == 20 and len(full_seq) == 35:
+                    sequence_data[chromosome].append([-1 * (pam_location + len(pam)), gRNA, full_seq])
+                
         return sequence_data
 
 
@@ -234,20 +279,19 @@ if __name__ == "__main__":
     #read on-target matrix
     CRISPRSCAN_data = file_ops_obj.read_CRISPRSCAN(CASPERinfo_path, on_target_matrix)
     #print(CRISPRSCAN_data)
-    
+
     #read fna file
     organism_data = file_ops_obj.read_fna_file(fna_path)
 
     #analyze fna file
-    pam_locations = seq_finder_obj.find_pams(organism_data, pam)
+    pam_locations, pam_locations_reverse_comp = seq_finder_obj.find_pams(organism_data, pam)
 
     #extract sequences from pam locations in each chromosome
-    sequence_data = seq_finder_obj.extract_sequences(organism_data, pam_locations, sequence_length, pam_length=len(pam))
+    sequence_data = seq_finder_obj.extract_sequences(organism_data, pam_locations, pam_locations_reverse_comp, sequence_length, pam_length=len(pam))
 
     #write out the sequencing data
     with open("seq_finder_output.csv", "w") as f:
         for chromosome in sequence_data.keys():
-            #f.write(chromosome + "\n")
             f.write("Location, gRNA, full sequence, on-target score\n")
-            for sequence in sequence_data[chromosome]:
+            for sequence in sorted(sequence_data[chromosome], key=lambda x: abs(x[0])):
                 f.write(f"{sequence[0]}, {sequence[1]}, {sequence[2]}, {round(on_target_obj.score_sequence(sequence[1], sequence[2], CRISPRSCAN_data, endo, directionality, sequence_length, pam))}\n")
