@@ -1,5 +1,6 @@
 from Bio.Seq import Seq
 
+
 def reverse_complement(seq):
     seq = seq[::-1]
     reverse_comp_seq = ""
@@ -14,11 +15,13 @@ def reverse_complement(seq):
             reverse_comp_seq += "C"    
     return reverse_comp_seq
 
+
 def get_pams(pam):
     if pam == "NGG":
         return  ["AGG", "GGG", "TGG", "CGG"]
     else:
         return []
+
 
 class file_operations():
     def __init__(self) -> None:
@@ -109,7 +112,8 @@ class on_target():
 
         # Return the CRISPRscan score
         score += 0.183930944
-        return (score * 100)
+
+        return (((score + 0.65546) / 1.94947)) 
 
     def get_sij(self, seq, three_prime, gRNA_len, pam):
         if three_prime:
@@ -187,7 +191,15 @@ class on_target():
             score = sc_score
         else:
             score = sc_score / p_score
-        return score
+
+        # if full_seq == "ATTGCAGTGGGTATATTGGAAAGCAAAGGTTTTGA":
+        #     print(f"sc score {sc_score}")
+        #     print(f"p score: {p_score}")
+        #     print(f"sij score: {sij_score}")
+        #     print(f"sg score: {sg_score}")
+        #     print(f"on score: {score * 100}")
+
+        return score * 100 / 2
 
 
 # seq finder object
@@ -235,18 +247,19 @@ class seq_finder():
                 
                 #get rid of entries too close to edge
                 if len(gRNA) == 20 and len(full_seq) == 35:
-                    sequence_data[chromosome].append([pam_location - 1, gRNA, full_seq])
+                    sequence_data[chromosome].append([pam_location, gRNA, full_seq])
                 
             #process reverse complement passthrough sequences
             reverse_comp_data = reverse_complement(organism_data[chromosome])
             for pam_location in pam_locations_reverse_comp[chromosome]:
+                #calculate leftover padding needed
                 leftover_padding = 35 - 6 - sequence_length - pam_length
-                full_seq = reverse_comp_data[pam_location - 6: pam_location + pam_length + sequence_length + leftover_padding]
-                gRNA = reverse_comp_data[pam_location + pam_length: pam_location + pam_length + sequence_length]
+                full_seq = reverse_comp_data[pam_location - sequence_length - leftover_padding: pam_location + pam_length + 6]
+                gRNA = reverse_comp_data[pam_location - sequence_length: pam_location]
 
                 #get rid of entries too close to edge
                 if len(gRNA) == 20 and len(full_seq) == 35:
-                    sequence_data[chromosome].append([-1 * (pam_location + len(pam)), gRNA, full_seq])
+                    sequence_data[chromosome].append([-1 * (len(reverse_comp_data) - pam_location + 1), gRNA, full_seq])
                 
         return sequence_data
 
@@ -294,4 +307,5 @@ if __name__ == "__main__":
         for chromosome in sequence_data.keys():
             f.write("Location, gRNA, full sequence, on-target score\n")
             for sequence in sorted(sequence_data[chromosome], key=lambda x: abs(x[0])):
-                f.write(f"{sequence[0]}, {sequence[1]}, {sequence[2]}, {round(on_target_obj.score_sequence(sequence[1], sequence[2], CRISPRSCAN_data, endo, directionality, sequence_length, pam))}\n")
+                on_score = round(on_target_obj.score_sequence(sequence[1], sequence[2], CRISPRSCAN_data, endo, directionality, sequence_length, pam))
+                f.write(f"{sequence[0]}, {sequence[1]}, {sequence[2]}, {on_score}\n")
