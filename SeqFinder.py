@@ -115,8 +115,11 @@ class on_target():
 
         # Return the CRISPRscan score
         score += 0.183930944
-
-        return (((score + 0.65546) / 1.94947)) 
+        if score <=0:
+            return 0
+        else:
+            return score
+        # return (((score + 0.65546) / 1.94947)) 
 
     def get_sij(self, seq, three_prime, gRNA_len, pam):
         seq = Seq(seq.upper())
@@ -146,7 +149,8 @@ class on_target():
                 score += 0.5
             elif nt == "A":
                 score -= 0.1
-        return (score + 0.1*gRNA_len) / gRNA_len
+        return (score / gRNA_len)
+        # return (score + 0.1*gRNA_len) / gRNA_len
 
     def get_p(self, sij_score, sg_score):
         if sij_score > 1:
@@ -179,11 +183,11 @@ class on_target():
         sg_score = self.get_sg(gRNA,three_prime,gRNA_len,pam)
         p_score = self.get_p(sij_score, sg_score)
 
-        if gRNA == "TAAGGATTTATTTATTGATTTTTA":
-            print(f"sc score: {sc_score}")
-            print(f"p score: {p_score}")
-            print(f"sg score: {sg_score}")
-            print(f"sij score: {sij_score}")
+        # if gRNA == "TTTAATTGATCTAAGTTTGC":
+        #     print(f"sc score: {sc_score}")
+        #     print(f"p score: {p_score}")
+        #     print(f"sg score: {sg_score}")
+        #     print(f"sij score: {sij_score}")
 
         if endo != "spCas9" and three_prime:
             p_score += self.ggg_penalty(gRNA)
@@ -193,17 +197,18 @@ class on_target():
         else:
             score = sc_score / p_score
 
-        # if full_seq == "ATTGCAGTGGGTATATTGGAAAGCAAAGGTTTTGA":
-        #     print(f"sc score {sc_score}")
-        #     print(f"p score: {p_score}")
-        #     print(f"sij score: {sij_score}")
-        #     print(f"sg score: {sg_score}")
-        #     print(f"on score: {score * 100}")
-        if (score * 100) <= 100:
-            return score * 100
+        if three_prime:
+            score /= 1 #Scalar modifier to get scores between 0 and 100
+            if (score * 100) <= 100:
+                return (score * 100)
+            else:
+                return 100
         else:
-            return 100
-
+            score /= 1 #Scalar modifier to get scores between 0 and 100
+            if (score * 100) <= 100:
+                return (score * 100)
+            else:
+                return 100
 
 # seq finder object
 class seq_finder():
@@ -319,8 +324,8 @@ if __name__ == "__main__":
     org_code = "sau"
     output_path = ""
     CASPERinfo_path = "CASPERinfo"
-    # fna_path = "staphylococcus_aureus.fna"
     fna_path = "staphylococcus_aureus.fna"
+    # fna_path = "s_cerevisiae_s288c.fna"
     org_name = "staph"
     notes = ""
     on_target_matrix = "DATA:CRISPRSCAN"
@@ -351,6 +356,10 @@ if __name__ == "__main__":
         for chromosome in sequence_data.keys():
             f.write("Location, gRNA, full sequence, on-target score\n")
             for sequence in sorted(sequence_data[chromosome], key=lambda x: abs(x[0])):
-                on_score = round(on_target_obj.score_sequence(sequence[1], sequence[2], CRISPRSCAN_data, endo, three_prime, sequence_length, pam))
+                on_score = on_target_obj.score_sequence(sequence[1], sequence[2], CRISPRSCAN_data, endo, three_prime, sequence_length, pam)
                 on_scores.append(on_score)
                 f.write(f"{sequence[0]}, {sequence[1]}, {sequence[2]}, {on_score}\n")
+
+    # figure = plt.Figure()
+    # plt.hist(on_scores,bins=100)
+    # plt.show()
